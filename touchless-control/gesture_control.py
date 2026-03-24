@@ -7,13 +7,8 @@ classification based on finger states and landmark distances.
 
 import cv2
 import mediapipe as mp
-import mediapipe.solutions
-import mediapipe.solutions.drawing_utils
-import mediapipe.solutions.drawing_styles
-import mediapipe.solutions.hands
 from mediapipe.tasks import python
 from mediapipe.tasks.python import vision
-from mediapipe.framework.formats import landmark_pb2
 import config
 from utils import get_fingers_up, count_fingers, euclidean_distance
 
@@ -25,11 +20,14 @@ class GestureRecognizer:
 
     def __init__(self):
         """Initialize MediaPipe Hands and internal state."""
+        # Initialize MediaPipe Hand Landmarker using synchronous mode
         base_options = python.BaseOptions(model_asset_path='hand_landmarker.task')
-        options = vision.HandLandmarkerOptions(base_options=base_options, num_hands=config.MP_MAX_HANDS)
+        options = vision.HandLandmarkerOptions(
+            base_options=base_options,
+            num_hands=config.MP_MAX_HANDS,
+            running_mode=vision.RunningMode.IMAGE
+        )
         self.hands = vision.HandLandmarker.create_from_options(options)
-        self.mp_draw = mp.solutions.drawing_utils
-        self.mp_hands = mp.solutions.hands
 
         # Internal state for gesture stability
         self.current_gesture = config.GESTURE_NONE
@@ -54,9 +52,8 @@ class GestureRecognizer:
             (results, rgb_frame): MediaPipe results and RGB‑converted frame
         """
         rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        rgb_frame.flags.writeable = False
-        results = self.hands.process(rgb_frame)
-        rgb_frame.flags.writeable = True
+        mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb_frame)
+        results = self.hands.detect(mp_image)
         return results, rgb_frame
 
     def recognize_gesture(self, landmarks):
@@ -95,88 +92,71 @@ class GestureRecognizer:
                 if self.drag_hold_count >= config.DRAG_START_FRAMES:
                     self.drag_active = True
                     return config.GESTURE_DRAG
-                else:
-                    return config.GESTURE_LEFT_CLICK
             else:
                 return config.GESTURE_DRAG
         else:
-            # Release pinch
             if self.drag_active:
                 self.drag_active = False
             self.drag_hold_count = 0
 
-        # 2. Thumb + middle finger → Right Click
-        if middle_thumb_dist < config.TOUCH_THRESHOLD:
-            return config.GESTURE_RIGHT_CLICK
+            # 2. Index finger only → Left Click
+            if fingers_up[1] and not fingers_up[2] and not fingers_up[3] and not fingers_up[4]:
+                return config.GESTURE_LEFT_CLICK
 
-        # 3. Three fingers up + moving vertically → Next/Previous Slide
-        if num_fingers == 3:
-            # Check vertical movement direction
-            index_y = landmarks[8].y
-            middle_y = landmarks[12].y
-            ring_y = landmarks[16].y
-            avg_y = (index_y + middle_y + ring_y) / 3
+            # 3. Index + thumb (not pinched) → Right Click
+            if fingers_up[1] and fingers_up[4] and not fingers_up[2] and not fingers_up[3]:
+                return config.GESTURE_RIGHT_CLICK
 
-            if self.scroll_ref_y is None:
-                self.scroll_ref_y = avg_y
-            else:
-                delta_y = avg_y - self.scroll_ref_y
-                if abs(delta_y) > config.SCROLL_MOVE_THRESHOLD:
-                    self.scroll_ref_y = avg_y
-                    if delta_y < 0:
-                        return config.GESTURE_NEXT_SLIDE
-                    else:
-                        return config.GESTURE_PREV_SLIDE
+            # 4. Two fingers up (index + middle) → Scroll Up
+            if fingers_up[1] and fingers_up[2] and not fingers_up[3] and not fingers_up[4]:
+                return config.GESTURE_SCROLL_UP
 
-        # 4. Two fingers up (index + middle) + moving vertically → Scroll
-        elif num_fingers == 2 and fingers_up[1] and fingers_up[2]:
-            index_y = landmarks[8].y
-            middle_y = landmarks[12].y
-            avg_y = (index_y + middle_y) / 2
+            # 5. Five fingers up → Scroll Down
+            if fingers_up[0] and fingers_up[1] and fingers_up[2] and fingers_up[3] and fingers_up[4]:
+                return config.GESTURE_SCROLL_DOWN
 
-            if self.scroll_ref_y is None:
-                self.scroll_ref_y = avg_y
-            else:
-                delta_y = avg_y - self.scroll_ref_y
-                if abs(delta_y) > config.SCROLL_MOVE_THRESHOLD:
-                    self.scroll_ref_y = avg_y
-                    if delta_y > 0:
-                        return config.GESTURE_SCROLL_DOWN
-                    else:
-                        return config.GESTURE_SCROLL_UP
+            # 6. Peace sign (index + middle, spread) → Next Slide
+            if fingers_up[1] and fingers_up[2] and not fingers_up[3] and not fingers_up[4]:
+                index_middle_dist = euclidean_distance(
+                    (landmarks[8].x, landmarks[8].y),
+                    (landmarks[12].x, landmarks[12].y)
+                )
+                if index_middle_dist > config.PEACE_THRESHOLD:
+                    return config.GESTURE_NEXT_SLIDE
 
-        # 5. Index finger only → Move Cursor
-        elif num_fingers == 1 and fingers_up[1]:
-            self.scroll_ref_y = None
-            return config.GESTURE_MOVE
+            # 7. Three fingers up (spread) → Previous Slide
+            if fingers_up[1] and fingers_up[2] and fingers_up[3] and not fingers_up[4]:
+                three_finger_dist = euclidean_distance(
+                    (landmarks[8].x, landmarks[8].y),
+                    (landmarks[16].x, landmarks[16].y)
+                )
+                if three_finger_dist > config.PEACE_THRESHOLD:
+                    return config.GESTURE_PREV_SLIDE
 
-        # Default
-        self.scroll_ref_y = None
-        return config.GESTURE_NONE
+        # 8. Default → Move cursor
+        return config.GESTURE_MOVE
 
     def get_cursor_position(self, landmarks, frame_width, frame_height):
         """
-        Get the cursor position based on index finger tip.
+        Get screen coordinates from hand landmarks.
 
         Args:
-            landmarks: list of MediaPipe hand landmarks
-            frame_width: int, camera frame width
-            frame_height: int, camera frame height
+            landmarks: list of 21 MediaPipe hand landmarks
+            frame_width: width of the camera frame
+            frame_height: height of the camera frame
 
         Returns:
-            (screen_x, screen_y): tuple of screen coordinates
+            (x, y): screen coordinates
         """
-        # Use index finger tip (landmark 8)
-        index_tip = landmarks[8]
+        # Use index finger MCP (knuckle) for cursor position
+        cursor_landmark = landmarks[5]
 
-        # Map from camera coordinates to screen coordinates
-        # Invert x to mirror the image
-        screen_x = int((1 - index_tip.x) * config.SCREEN_WIDTH)
-        screen_y = int(index_tip.y * config.SCREEN_HEIGHT)
+        # Convert normalized coordinates to screen coordinates
+        screen_x = int(cursor_landmark.x * config.SCREEN_WIDTH)
+        screen_y = int(cursor_landmark.y * config.SCREEN_HEIGHT)
 
-        # Clamp to screen bounds
-        screen_x = max(0, min(config.SCREEN_WIDTH - 1, screen_x))
-        screen_y = max(0, min(config.SCREEN_HEIGHT - 1, screen_y))
+        # Invert X for natural movement
+        screen_x = config.SCREEN_WIDTH - screen_x
 
         return screen_x, screen_y
 
@@ -191,37 +171,33 @@ class GestureRecognizer:
         Returns:
             frame with landmarks drawn
         """
-        if results.hand_landmarks:
+        if results and results.hand_landmarks:
             for hand_landmarks in results.hand_landmarks:
-                # Draw landmarks using the new MediaPipe API
-                hand_landmarks_proto = landmark_pb2.NormalizedLandmarkList(
-                    landmark=[
-                        landmark_pb2.NormalizedLandmark(x=lm.x, y=lm.y, z=lm.z)
-                        for lm in hand_landmarks
-                    ]
-                )
-                mp.solutions.drawing_utils.draw_landmarks(
+                # Draw landmarks using MediaPipe's drawing utilities from vision module
+                vision.drawing_utils.draw_landmarks(
                     frame,
-                    hand_landmarks_proto,
-                    mp.solutions.hands.HAND_CONNECTIONS,
-                    mp.solutions.drawing_styles.get_default_hand_landmarks_style(),
-                    mp.solutions.drawing_styles.get_default_hand_connections_style()
+                    hand_landmarks,
+                    vision.HandLandmarksConnections.HAND_CONNECTIONS,
+                    vision.drawing_styles.get_default_hand_landmarks_style(),
+                    vision.drawing_styles.get_default_hand_connections_style()
                 )
+
         return frame
 
-    def update_cooldown(self):
-        """Decrement cooldown counter if active."""
-        if self.cooldown_counter > 0:
-            self.cooldown_counter -= 1
-
     def is_on_cooldown(self):
-        """Check if gesture actions are on cooldown."""
+        """Check if gesture recognition is on cooldown."""
         return self.cooldown_counter > 0
 
     def trigger_cooldown(self):
-        """Start cooldown after an action."""
+        """Start cooldown after a click gesture."""
         self.cooldown_counter = config.ACTION_COOLDOWN_FRAMES
+
+    def update_cooldown(self):
+        """Update cooldown counter."""
+        if self.cooldown_counter > 0:
+            self.cooldown_counter -= 1
 
     def close(self):
         """Release MediaPipe resources."""
-        self.hands.close()
+        if self.hands:
+            self.hands.close()

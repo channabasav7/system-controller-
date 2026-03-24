@@ -38,6 +38,7 @@ class Dashboard:
 
         self.running = False
         self.voice_enabled = False
+        self.control_mode = tk.StringVar(value="hand")
 
         self._create_widgets()
 
@@ -85,6 +86,32 @@ class Dashboard:
             state=tk.DISABLED
         )
         self.stop_button.pack(pady=10)
+
+        # ────────────── Control Mode ────────────────────────────────────────
+        mode_frame = tk.LabelFrame(
+            control_frame,
+            text="Control Mode",
+            font=("Arial", 12, "bold"),
+            padx=10,
+            pady=10
+        )
+        mode_frame.pack(pady=10, fill=tk.X)
+
+        tk.Radiobutton(
+            mode_frame,
+            text="Hand Gesture",
+            variable=self.control_mode,
+            value="hand",
+            font=("Arial", 11)
+        ).pack(anchor=tk.W)
+
+        tk.Radiobutton(
+            mode_frame,
+            text="Iris Eye Tracking",
+            variable=self.control_mode,
+            value="iris",
+            font=("Arial", 11)
+        ).pack(anchor=tk.W)
 
         # ────────────── Voice Control Toggle ────────────────────────────────
         voice_frame = tk.LabelFrame(
@@ -164,9 +191,9 @@ class Dashboard:
         self.running = True
         self.start_button.config(state=tk.DISABLED)
         self.stop_button.config(state=tk.NORMAL)
-        self._update_status("System started")
+        self._update_status(f"System started ({self.control_mode.get()} mode)")
         if self.start_callback:
-            self.start_callback()
+            self.start_callback(self.control_mode.get())
 
     def _on_stop(self):
         """Handle Stop button click."""

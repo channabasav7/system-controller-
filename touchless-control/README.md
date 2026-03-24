@@ -35,6 +35,7 @@ Supported voice commands:
 - Cursor smoothing algorithm for stable control
 - GUI dashboard for settings and control
 - Multithreaded architecture for simultaneous gesture and voice processing
+- Iris eye-tracking mode with 9-point calibration and blink/dwell clicks
 
 ---
 
@@ -112,15 +113,21 @@ The script will automatically:
 
 3. **Use the dashboard**:
    - Click **"Start System"** to begin
+   - Choose **Control Mode**: `Hand Gesture` or `Iris Eye Tracking`
    - Enable **"Voice Control"** checkbox for voice commands
    - Adjust **"Cursor Smoothing"** slider for sensitivity
 
-4. **Control with gestures**:
+4. **If using Iris Eye Tracking mode**:
+   - Press `C` in the iris preview window to start calibration
+   - Look at each calibration circle until it fills
+   - Press `R` to reset calibration, `Q` to quit iris mode
+
+5. **Control with gestures**:
    - Position your hand in front of the webcam
    - The system will detect and display hand landmarks
    - Perform gestures to control the mouse
 
-5. **Exit**:
+6. **Exit**:
    - Press `q` in the video window, or
    - Click **"Stop System"** in the dashboard
 
@@ -155,6 +162,10 @@ touchless-control/
 ├── display.py                   # OpenCV video overlay
 ├── dashboard.py                 # Tkinter GUI dashboard
 ├── main.py                      # Main entry point
+├── iris/
+│   ├── eye_tracker.py           # Iris/eye-tracking controller
+│   ├── config.yaml              # Iris tuning and calibration settings
+│   └── README.md                # Iris module documentation
 ├── requirements.txt             # Python dependencies
 ├── setup.bat                    # Automated setup script
 └── README.md                    # This file

@@ -1,0 +1,494 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Touchless Control - Hand Gesture & Voice Laptop Control</title>
+    <style>
+        *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+        :root {
+            --primary: #6C63FF;
+            --primary-dark: #5A52D5;
+            --accent: #FF6584;
+            --bg-dark: #0B0D17;
+            --bg-card: #131528;
+            --bg-card-hover: #1A1D35;
+            --text: #E2E8F0;
+            --text-muted: #94A3B8;
+            --gradient: linear-gradient(135deg, #6C63FF, #FF6584);
+        }
+
+        html { scroll-behavior: smooth; }
+
+        body {
+            font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+            background: var(--bg-dark);
+            color: var(--text);
+            line-height: 1.6;
+            overflow-x: hidden;
+        }
+
+        /* --- Navbar --- */
+        nav {
+            position: fixed; top: 0; width: 100%; z-index: 100;
+            background: rgba(11, 13, 23, 0.85);
+            backdrop-filter: blur(12px);
+            border-bottom: 1px solid rgba(108, 99, 255, 0.15);
+            padding: 1rem 2rem;
+            display: flex; justify-content: space-between; align-items: center;
+        }
+        .logo {
+            font-size: 1.4rem; font-weight: 700;
+            background: var(--gradient); -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+        }
+        .nav-links { display: flex; gap: 2rem; list-style: none; }
+        .nav-links a {
+            color: var(--text-muted); text-decoration: none; font-size: 0.95rem;
+            transition: color 0.3s;
+        }
+        .nav-links a:hover { color: #fff; }
+
+        /* --- Hero --- */
+        .hero {
+            min-height: 100vh; display: flex; align-items: center; justify-content: center;
+            text-align: center; padding: 6rem 2rem 4rem;
+            background:
+                radial-gradient(circle at 20% 50%, rgba(108, 99, 255, 0.12) 0%, transparent 50%),
+                radial-gradient(circle at 80% 50%, rgba(255, 101, 132, 0.1) 0%, transparent 50%);
+        }
+        .hero-content { max-width: 800px; }
+        .hero-badge {
+            display: inline-block; padding: 0.4rem 1.2rem; border-radius: 50px;
+            background: rgba(108, 99, 255, 0.15); color: var(--primary);
+            font-size: 0.85rem; font-weight: 600; margin-bottom: 1.5rem;
+            border: 1px solid rgba(108, 99, 255, 0.3);
+        }
+        .hero h1 {
+            font-size: 3.5rem; font-weight: 800; line-height: 1.15; margin-bottom: 1.5rem;
+        }
+        .hero h1 .gradient-text {
+            background: var(--gradient); -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+        }
+        .hero p { font-size: 1.2rem; color: var(--text-muted); max-width: 600px; margin: 0 auto 2.5rem; }
+        .hero-buttons { display: flex; gap: 1rem; justify-content: center; flex-wrap: wrap; }
+        .btn {
+            padding: 0.85rem 2rem; border-radius: 12px; font-size: 1rem; font-weight: 600;
+            text-decoration: none; transition: all 0.3s; cursor: pointer; border: none;
+        }
+        .btn-primary {
+            background: var(--gradient); color: #fff;
+            box-shadow: 0 4px 20px rgba(108, 99, 255, 0.4);
+        }
+        .btn-primary:hover { transform: translateY(-2px); box-shadow: 0 6px 30px rgba(108, 99, 255, 0.5); }
+        .btn-outline {
+            background: transparent; color: var(--text);
+            border: 2px solid rgba(108, 99, 255, 0.4);
+        }
+        .btn-outline:hover { border-color: var(--primary); background: rgba(108, 99, 255, 0.1); }
+
+        /* --- Sections --- */
+        section { padding: 5rem 2rem; }
+        .section-title {
+            text-align: center; font-size: 2.2rem; font-weight: 700; margin-bottom: 0.8rem;
+        }
+        .section-subtitle {
+            text-align: center; color: var(--text-muted); max-width: 600px; margin: 0 auto 3rem;
+        }
+
+        /* --- Features --- */
+        .features-grid {
+            display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 1.5rem; max-width: 1100px; margin: 0 auto;
+        }
+        .feature-card {
+            background: var(--bg-card); border-radius: 16px; padding: 2rem;
+            border: 1px solid rgba(108, 99, 255, 0.1);
+            transition: all 0.3s;
+        }
+        .feature-card:hover {
+            transform: translateY(-4px); background: var(--bg-card-hover);
+            border-color: rgba(108, 99, 255, 0.3);
+            box-shadow: 0 8px 30px rgba(108, 99, 255, 0.1);
+        }
+        .feature-icon {
+            width: 50px; height: 50px; border-radius: 12px;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 1.5rem; margin-bottom: 1.2rem;
+            background: rgba(108, 99, 255, 0.12);
+        }
+        .feature-card h3 { font-size: 1.15rem; margin-bottom: 0.5rem; }
+        .feature-card p { color: var(--text-muted); font-size: 0.95rem; }
+
+        /* --- How It Works --- */
+        #how-it-works { background: rgba(19, 21, 40, 0.5); }
+        .steps {
+            display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 2rem; max-width: 1000px; margin: 0 auto;
+        }
+        .step { text-align: center; position: relative; }
+        .step-number {
+            width: 60px; height: 60px; border-radius: 50%;
+            background: var(--gradient); color: #fff;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 1.4rem; font-weight: 700; margin: 0 auto 1.2rem;
+        }
+        .step h3 { margin-bottom: 0.4rem; }
+        .step p { color: var(--text-muted); font-size: 0.9rem; }
+
+        /* --- Gestures --- */
+        .gesture-table {
+            max-width: 900px; margin: 0 auto;
+            display: grid; gap: 0.8rem;
+        }
+        .gesture-row {
+            display: grid; grid-template-columns: 60px 1fr 1fr;
+            align-items: center; gap: 1rem;
+            background: var(--bg-card); border-radius: 12px; padding: 1rem 1.5rem;
+            border: 1px solid rgba(108, 99, 255, 0.08);
+            transition: all 0.3s;
+        }
+        .gesture-row:hover {
+            background: var(--bg-card-hover);
+            border-color: rgba(108, 99, 255, 0.25);
+        }
+        .gesture-emoji { font-size: 1.8rem; text-align: center; }
+        .gesture-name { font-weight: 600; }
+        .gesture-desc { color: var(--text-muted); font-size: 0.9rem; }
+
+        /* --- Tech Stack --- */
+        .tech-grid {
+            display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+            gap: 1.2rem; max-width: 900px; margin: 0 auto;
+        }
+        .tech-item {
+            text-align: center; padding: 1.8rem 1rem; border-radius: 16px;
+            background: var(--bg-card); border: 1px solid rgba(108, 99, 255, 0.08);
+            transition: all 0.3s;
+        }
+        .tech-item:hover {
+            transform: translateY(-3px); border-color: rgba(108, 99, 255, 0.25);
+        }
+        .tech-item .icon { font-size: 2rem; margin-bottom: 0.6rem; }
+        .tech-item h4 { font-size: 0.95rem; margin-bottom: 0.2rem; }
+        .tech-item p { font-size: 0.8rem; color: var(--text-muted); }
+
+        /* --- Voice Commands --- */
+        #voice { background: rgba(19, 21, 40, 0.5); }
+        .voice-grid {
+            display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 1rem; max-width: 900px; margin: 0 auto;
+        }
+        .voice-cmd {
+            display: flex; align-items: center; gap: 0.8rem;
+            background: var(--bg-card); border-radius: 10px; padding: 0.9rem 1.2rem;
+            border: 1px solid rgba(108, 99, 255, 0.08);
+            transition: all 0.3s;
+        }
+        .voice-cmd:hover { border-color: rgba(255, 101, 132, 0.3); }
+        .voice-cmd .mic { color: var(--accent); font-size: 1.1rem; }
+        .voice-cmd code {
+            background: rgba(108, 99, 255, 0.12); padding: 0.2rem 0.6rem;
+            border-radius: 6px; font-size: 0.85rem; color: var(--primary);
+        }
+        .voice-cmd span { color: var(--text-muted); font-size: 0.85rem; }
+
+        /* --- Stats --- */
+        .stats {
+            display: flex; justify-content: center; gap: 3rem; flex-wrap: wrap;
+            padding: 3rem 2rem; max-width: 900px; margin: 0 auto;
+        }
+        .stat { text-align: center; }
+        .stat-value {
+            font-size: 2.5rem; font-weight: 800;
+            background: var(--gradient); -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+        }
+        .stat-label { color: var(--text-muted); font-size: 0.9rem; margin-top: 0.3rem; }
+
+        /* --- Footer --- */
+        footer {
+            text-align: center; padding: 3rem 2rem;
+            border-top: 1px solid rgba(108, 99, 255, 0.1);
+            color: var(--text-muted); font-size: 0.9rem;
+        }
+        footer .gradient-text {
+            background: var(--gradient); -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+            font-weight: 600;
+        }
+
+        /* --- Responsive --- */
+        @media (max-width: 768px) {
+            .hero h1 { font-size: 2.2rem; }
+            .hero p { font-size: 1rem; }
+            .nav-links { display: none; }
+            .gesture-row { grid-template-columns: 50px 1fr; }
+            .gesture-desc { display: none; }
+            .stats { gap: 1.5rem; }
+        }
+
+        /* --- Animations --- */
+        .fade-up {
+            opacity: 0; transform: translateY(30px);
+            transition: opacity 0.6s ease, transform 0.6s ease;
+        }
+        .fade-up.visible { opacity: 1; transform: translateY(0); }
+    </style>
+</head>
+<body>
+
+<!-- Navbar -->
+<nav>
+    <div class="logo">Touchless Control</div>
+    <ul class="nav-links">
+        <li><a href="#features">Features</a></li>
+        <li><a href="#how-it-works">How It Works</a></li>
+        <li><a href="#gestures">Gestures</a></li>
+        <li><a href="#voice">Voice</a></li>
+        <li><a href="#tech">Tech Stack</a></li>
+    </ul>
+</nav>
+
+<!-- Hero -->
+<section class="hero">
+    <div class="hero-content fade-up">
+        <span class="hero-badge">6th Semester Major Project</span>
+        <h1>Control Your Laptop<br><span class="gradient-text">Without Touching It</span></h1>
+        <p>A real-time hand gesture and voice command system that lets you navigate, click, scroll, and control presentations — completely hands-free.</p>
+        <div class="hero-buttons">
+            <a href="#features" class="btn btn-primary">Explore Features</a>
+            <a href="#how-it-works" class="btn btn-outline">How It Works</a>
+        </div>
+    </div>
+</section>
+
+<!-- Stats -->
+<div class="stats fade-up">
+    <div class="stat">
+        <div class="stat-value">8+</div>
+        <div class="stat-label">Gesture Types</div>
+    </div>
+    <div class="stat">
+        <div class="stat-value">15+</div>
+        <div class="stat-label">Voice Commands</div>
+    </div>
+    <div class="stat">
+        <div class="stat-value">30</div>
+        <div class="stat-label">FPS Real-time</div>
+    </div>
+    <div class="stat">
+        <div class="stat-value">&lt;100ms</div>
+        <div class="stat-label">Response Latency</div>
+    </div>
+</div>
+
+<!-- Features -->
+<section id="features">
+    <h2 class="section-title fade-up">Key Features</h2>
+    <p class="section-subtitle fade-up">Powerful touchless control powered by computer vision and speech recognition.</p>
+    <div class="features-grid">
+        <div class="feature-card fade-up">
+            <div class="feature-icon">&#128400;</div>
+            <h3>Cursor Control</h3>
+            <p>Move your mouse pointer by simply pointing your index finger in front of the webcam.</p>
+        </div>
+        <div class="feature-card fade-up">
+            <div class="feature-icon">&#128073;</div>
+            <h3>Click & Drag</h3>
+            <p>Left click, right click, and drag-and-drop using intuitive finger pinch gestures.</p>
+        </div>
+        <div class="feature-card fade-up">
+            <div class="feature-icon">&#128483;</div>
+            <h3>Voice Commands</h3>
+            <p>Open apps, control windows, take screenshots, and more using natural voice commands.</p>
+        </div>
+        <div class="feature-card fade-up">
+            <div class="feature-icon">&#128218;</div>
+            <h3>Presentation Mode</h3>
+            <p>Navigate PowerPoint slides with three-finger swipes — no remote needed.</p>
+        </div>
+        <div class="feature-card fade-up">
+            <div class="feature-icon">&#128260;</div>
+            <h3>Smooth Scrolling</h3>
+            <p>Two-finger vertical movement for precise, jitter-free scrolling in any application.</p>
+        </div>
+        <div class="feature-card fade-up">
+            <div class="feature-icon">&#9881;</div>
+            <h3>GUI Dashboard</h3>
+            <p>A clean control panel to start/stop the system, toggle voice control, and adjust sensitivity.</p>
+        </div>
+    </div>
+</section>
+
+<!-- How It Works -->
+<section id="how-it-works">
+    <h2 class="section-title fade-up">How It Works</h2>
+    <p class="section-subtitle fade-up">Real-time processing pipeline from camera to action.</p>
+    <div class="steps">
+        <div class="step fade-up">
+            <div class="step-number">1</div>
+            <h3>Capture</h3>
+            <p>Webcam captures live video at 30 FPS for real-time processing.</p>
+        </div>
+        <div class="step fade-up">
+            <div class="step-number">2</div>
+            <h3>Detect</h3>
+            <p>MediaPipe identifies 21 hand landmarks with sub-pixel accuracy.</p>
+        </div>
+        <div class="step fade-up">
+            <div class="step-number">3</div>
+            <h3>Recognize</h3>
+            <p>Gesture classifier analyzes finger positions and movements.</p>
+        </div>
+        <div class="step fade-up">
+            <div class="step-number">4</div>
+            <h3>Execute</h3>
+            <p>System performs the mapped action — click, scroll, launch, or navigate.</p>
+        </div>
+    </div>
+</section>
+
+<!-- Gestures -->
+<section id="gestures">
+    <h2 class="section-title fade-up">Gesture Guide</h2>
+    <p class="section-subtitle fade-up">Intuitive hand movements mapped to everyday actions.</p>
+    <div class="gesture-table">
+        <div class="gesture-row fade-up">
+            <div class="gesture-emoji">&#9757;</div>
+            <div class="gesture-name">Move Cursor</div>
+            <div class="gesture-desc">Point index finger to control the pointer</div>
+        </div>
+        <div class="gesture-row fade-up">
+            <div class="gesture-emoji">&#129295;</div>
+            <div class="gesture-name">Left Click</div>
+            <div class="gesture-desc">Touch index finger tip to thumb tip</div>
+        </div>
+        <div class="gesture-row fade-up">
+            <div class="gesture-emoji">&#129310;</div>
+            <div class="gesture-name">Right Click</div>
+            <div class="gesture-desc">Touch middle finger tip to thumb tip</div>
+        </div>
+        <div class="gesture-row fade-up">
+            <div class="gesture-emoji">&#129305;</div>
+            <div class="gesture-name">Drag & Drop</div>
+            <div class="gesture-desc">Pinch and hold index + thumb together</div>
+        </div>
+        <div class="gesture-row fade-up">
+            <div class="gesture-emoji">&#9996;</div>
+            <div class="gesture-name">Scroll Up / Down</div>
+            <div class="gesture-desc">Two fingers extended, move vertically</div>
+        </div>
+        <div class="gesture-row fade-up">
+            <div class="gesture-emoji">&#129306;</div>
+            <div class="gesture-name">Next / Prev Slide</div>
+            <div class="gesture-desc">Three fingers up, swipe up or down</div>
+        </div>
+    </div>
+</section>
+
+<!-- Voice Commands -->
+<section id="voice">
+    <h2 class="section-title fade-up">Voice Commands</h2>
+    <p class="section-subtitle fade-up">Speak naturally to control your laptop.</p>
+    <div class="voice-grid">
+        <div class="voice-cmd fade-up">
+            <span class="mic">&#127908;</span>
+            <code>"Open Chrome"</code>
+            <span>Launch browser</span>
+        </div>
+        <div class="voice-cmd fade-up">
+            <span class="mic">&#127908;</span>
+            <code>"Next Slide"</code>
+            <span>Navigate forward</span>
+        </div>
+        <div class="voice-cmd fade-up">
+            <span class="mic">&#127908;</span>
+            <code>"Scroll Down"</code>
+            <span>Scroll content</span>
+        </div>
+        <div class="voice-cmd fade-up">
+            <span class="mic">&#127908;</span>
+            <code>"Close Window"</code>
+            <span>Close active app</span>
+        </div>
+        <div class="voice-cmd fade-up">
+            <span class="mic">&#127908;</span>
+            <code>"Take Screenshot"</code>
+            <span>Capture screen</span>
+        </div>
+        <div class="voice-cmd fade-up">
+            <span class="mic">&#127908;</span>
+            <code>"Minimize"</code>
+            <span>Minimize window</span>
+        </div>
+        <div class="voice-cmd fade-up">
+            <span class="mic">&#127908;</span>
+            <code>"Open Notepad"</code>
+            <span>Launch Notepad</span>
+        </div>
+        <div class="voice-cmd fade-up">
+            <span class="mic">&#127908;</span>
+            <code>"Start Presentation"</code>
+            <span>Begin slideshow</span>
+        </div>
+    </div>
+</section>
+
+<!-- Tech Stack -->
+<section id="tech">
+    <h2 class="section-title fade-up">Tech Stack</h2>
+    <p class="section-subtitle fade-up">Built with industry-standard tools and libraries.</p>
+    <div class="tech-grid">
+        <div class="tech-item fade-up">
+            <div class="icon">&#128013;</div>
+            <h4>Python 3.10+</h4>
+            <p>Core Language</p>
+        </div>
+        <div class="tech-item fade-up">
+            <div class="icon">&#128247;</div>
+            <h4>OpenCV</h4>
+            <p>Computer Vision</p>
+        </div>
+        <div class="tech-item fade-up">
+            <div class="icon">&#9995;</div>
+            <h4>MediaPipe</h4>
+            <p>Hand Tracking</p>
+        </div>
+        <div class="tech-item fade-up">
+            <div class="icon">&#128433;</div>
+            <h4>PyAutoGUI</h4>
+            <p>System Control</p>
+        </div>
+        <div class="tech-item fade-up">
+            <div class="icon">&#127897;</div>
+            <h4>SpeechRecognition</h4>
+            <p>Voice Processing</p>
+        </div>
+        <div class="tech-item fade-up">
+            <div class="icon">&#128187;</div>
+            <h4>Tkinter</h4>
+            <p>GUI Dashboard</p>
+        </div>
+    </div>
+</section>
+
+<!-- Footer -->
+<footer>
+    <p>Built with passion as a <span class="gradient-text">6th Semester Major Project</span></p>
+    <p style="margin-top: 0.5rem;">Touchless Laptop Control System &copy; 2026</p>
+</footer>
+
+<!-- Scroll Animation Script -->
+<script>
+    const observer = new IntersectionObserver((entries) => {
+        entries.forEach(entry => {
+            if (entry.isIntersecting) {
+                entry.target.classList.add('visible');
+            }
+        });
+    }, { threshold: 0.1 });
+
+    document.querySelectorAll('.fade-up').forEach(el => observer.observe(el));
+</script>
+
+</body>
+</html>

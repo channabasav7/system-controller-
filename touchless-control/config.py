@@ -23,6 +23,9 @@ MP_TRACKING_CONFIDENCE = 0.7
 # Distance (normalised) between two landmarks to count as a "touch"
 TOUCH_THRESHOLD = 0.045
 
+# Minimum distance between fingers for peace sign / slide gestures
+PEACE_THRESHOLD = 0.08
+
 # Minimum vertical movement (normalised) to register a scroll gesture
 SCROLL_MOVE_THRESHOLD = 0.03
 

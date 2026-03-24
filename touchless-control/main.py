@@ -12,6 +12,7 @@ import cv2
 import time
 import threading
 import sys
+import os
 
 import config
 from gesture_control import GestureRecognizer
@@ -21,6 +22,7 @@ from voice_control import VoiceController
 from display import DisplayManager
 from dashboard import Dashboard
 from utils import CursorSmoother
+from iris.eye_tracker import EyeMouseController
 
 
 class TouchlessControlSystem:
@@ -51,7 +53,9 @@ class TouchlessControlSystem:
         # State
         self.running = False
         self.voice_enabled = False
+        self.control_mode = "hand"
         self.camera = None
+        self.iris_controller = None
 
         # FPS tracking
         self.fps = 0
@@ -60,14 +64,23 @@ class TouchlessControlSystem:
 
         print("[System] Initialization complete")
 
-    def start(self):
+    def start(self, mode="hand"):
         """Start the control system."""
         if self.running:
             print("[System] Already running")
             return
 
-        print("[System] Starting...")
+        self.control_mode = mode
+        print(f"[System] Starting in {self.control_mode} mode...")
         self.running = True
+
+        if self.control_mode == "iris":
+            iris_config = os.path.join(os.path.dirname(__file__), "iris", "config.yaml")
+            self.iris_controller = EyeMouseController(config_path=iris_config)
+            self.thread = threading.Thread(target=self._iris_main_loop, daemon=True)
+            self.thread.start()
+            print("[System] Iris mode started successfully")
+            return
 
         # Open camera
         self.camera = cv2.VideoCapture(config.CAMERA_INDEX)
@@ -84,10 +97,10 @@ class TouchlessControlSystem:
         self.display_manager.setup_window()
 
         # Run main loop in separate thread
-        self.thread = threading.Thread(target=self._main_loop, daemon=True)
+        self.thread = threading.Thread(target=self._hand_main_loop, daemon=True)
         self.thread.start()
 
-        print("[System] Started successfully")
+        print("[System] Hand mode started successfully")
 
     def stop(self):
         """Stop the control system."""
@@ -96,6 +109,10 @@ class TouchlessControlSystem:
 
         print("[System] Stopping...")
         self.running = False
+
+        # Stop iris mode loop
+        if self.iris_controller:
+            self.iris_controller.stop()
 
         # Wait for thread to finish
         if hasattr(self, 'thread'):
@@ -108,6 +125,8 @@ class TouchlessControlSystem:
         # Release resources
         if self.camera:
             self.camera.release()
+            self.camera = None
+        self.iris_controller = None
         self.gesture_recognizer.close()
         self.display_manager.close()
 
@@ -126,8 +145,8 @@ class TouchlessControlSystem:
         else:
             self.voice_controller.stop_listening()
 
-    def _main_loop(self):
-        """Main processing loop (runs in separate thread)."""
+    def _hand_main_loop(self):
+        """Hand-gesture processing loop (runs in separate thread)."""
         last_gesture = config.GESTURE_NONE
 
         while self.running:
@@ -146,13 +165,14 @@ class TouchlessControlSystem:
             gesture = config.GESTURE_NONE
 
             # If hand detected
-            if results.hand_landmarks:
+            if results and results.hand_landmarks:
                 for hand_landmarks in results.hand_landmarks:
                     # Draw landmarks
                     frame = self.gesture_recognizer.draw_landmarks(frame, results)
 
                     # Recognize gesture
-                    landmarks = hand_landmarks.landmark
+                    # MediaPipe Tasks API returns hand_landmarks directly as list of landmarks
+                    landmarks = hand_landmarks
                     gesture = self.gesture_recognizer.recognize_gesture(landmarks)
 
                     # Get cursor position
@@ -197,6 +217,14 @@ class TouchlessControlSystem:
                 print("[System] Quit key pressed")
                 self.running = False
                 break
+
+    def _iris_main_loop(self):
+        """Iris eye-tracking loop (runs in separate thread)."""
+        try:
+            if self.iris_controller:
+                self.iris_controller.run()
+        finally:
+            self.running = False
 
     def _execute_gesture_action(self, gesture, x, y, last_gesture):
         """

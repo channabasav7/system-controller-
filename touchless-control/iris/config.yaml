@@ -1,0 +1,37 @@
+# Eye Mouse Controller — Configuration
+# Edit these values to tune behavior for your setup.
+
+# ── Camera ──────────────────────────────────────────
+camera_index: 0          # 0 = default webcam; try 1, 2 for external cameras
+frame_width:  640
+frame_height: 480
+
+# ── Calibration ─────────────────────────────────────
+calibration_points: 9    # 4 | 5 | 9  (more = better accuracy)
+use_head_pose_compensation: true
+
+# ── Smoothing ────────────────────────────────────────
+# Kalman filter — lower process_noise = smoother but more lag
+kalman_process_noise:     0.001
+kalman_measurement_noise: 0.1
+
+# EMA alpha — how quickly to follow new positions (0.1 sluggish … 0.5 fast)
+ema_alpha: 0.25
+
+# ── Click Detection ──────────────────────────────────
+# Blink click
+blink_ear_threshold: 0.21   # EAR below this = closed eye
+blink_min_frames:    2       # How many consecutive frames eye must be closed
+blink_cooldown_ms:   700     # Min time between two clicks (ms)
+
+# Dwell click (gaze-hold)
+dwell_click_enabled: true
+dwell_time_ms:       1200    # How long to hold gaze before click fires
+dwell_radius_px:     40      # Pixel radius considered "same spot"
+
+# ── Cursor Movement ──────────────────────────────────
+cursor_speed_scale: 1.0      # Multiply mapped screen coords (>1 = faster)
+deadzone_px:        4        # Ignore movements smaller than this
+
+# ── Debug ────────────────────────────────────────────
+show_overlay: true
