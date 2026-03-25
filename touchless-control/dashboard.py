@@ -25,7 +25,7 @@ class Dashboard:
         ("Voice Commands Only", "voice", True),
     ]
 
-    def __init__(self, start_callback, stop_callback, status_callback=None):
+    def __init__(self, start_callback, stop_callback, status_callback=None, ui_event_callback=None):
         """
         Initialize the dashboard.
 
@@ -36,6 +36,7 @@ class Dashboard:
         self.start_callback = start_callback
         self.stop_callback = stop_callback
         self.status_callback = status_callback
+        self.ui_event_callback = ui_event_callback
 
         self.root = tk.Tk()
         self.root.title("Touchless Control Dashboard")
@@ -239,6 +240,9 @@ class Dashboard:
 
     def _poll_system_status(self):
         """Keep dashboard state aligned with backend runtime state."""
+        if self.ui_event_callback:
+            self.ui_event_callback()
+
         if self.running and self.status_callback:
             is_running = self.status_callback()
             if not is_running:
@@ -247,9 +251,14 @@ class Dashboard:
                 self.stop_button.config(state=tk.DISABLED)
                 self._update_status("System stopped or lost camera feed")
 
-        self.root.after(500, self._poll_system_status)
+        self.root.after(30, self._poll_system_status)
 
     def close(self):
         """Close the dashboard window."""
-        self.root.quit()
-        self.root.destroy()
+        try:
+            if self.root.winfo_exists():
+                self.root.quit()
+                self.root.destroy()
+        except tk.TclError:
+            # Window may already be destroyed by user action.
+            pass

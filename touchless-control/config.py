@@ -10,14 +10,16 @@ import pyautogui
 # ──────────────────────────── Screen & Camera ────────────────────────────
 SCREEN_WIDTH, SCREEN_HEIGHT = pyautogui.size()
 CAMERA_INDEX = 0
+CAMERA_INDICES = [0, 1, 2]
 CAMERA_WIDTH = 640
 CAMERA_HEIGHT = 480
 CAMERA_FPS = 30
+CAMERA_READ_RETRY_LIMIT = 30
 
 # ──────────────────────────── MediaPipe Hands ────────────────────────────
 MP_MAX_HANDS = 1
-MP_DETECTION_CONFIDENCE = 0.7
-MP_TRACKING_CONFIDENCE = 0.7
+MP_DETECTION_CONFIDENCE = 0.45
+MP_TRACKING_CONFIDENCE = 0.45
 
 # ──────────────────────────── Gesture Thresholds ─────────────────────────
 # Distance (normalised) between two landmarks to count as a "touch"

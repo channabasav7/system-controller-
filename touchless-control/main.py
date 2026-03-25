@@ -56,6 +56,8 @@ class TouchlessControlSystem:
         self.control_mode = "hand"
         self.camera = None
         self.iris_controller = None
+        self.latest_display_frame = None
+        self.frame_lock = threading.Lock()
 
         # FPS tracking
         self.fps = 0
@@ -63,6 +65,51 @@ class TouchlessControlSystem:
         self.fps_start_time = time.time()
 
         print("[System] Initialization complete")
+
+    def _open_camera(self):
+        """Open camera with backend fallbacks for better Windows stability."""
+        backends = [
+            ("DirectShow", cv2.CAP_DSHOW),
+            ("Default", None),
+        ]
+        camera_indices = getattr(config, "CAMERA_INDICES", [config.CAMERA_INDEX])
+
+        for index in camera_indices:
+            for backend_name, backend in backends:
+                try:
+                    if backend is None:
+                        camera = cv2.VideoCapture(index)
+                    else:
+                        camera = cv2.VideoCapture(index, backend)
+
+                    if not camera or not camera.isOpened():
+                        if camera:
+                            camera.release()
+                        continue
+
+                    camera.set(cv2.CAP_PROP_FRAME_WIDTH, config.CAMERA_WIDTH)
+                    camera.set(cv2.CAP_PROP_FRAME_HEIGHT, config.CAMERA_HEIGHT)
+                    camera.set(cv2.CAP_PROP_FPS, config.CAMERA_FPS)
+                    camera.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+
+                    # Warm-up read catches backends that open but never deliver frames.
+                    ok, _ = camera.read()
+                    if not ok:
+                        camera.release()
+                        continue
+
+                    print(
+                        f"[System] Camera opened at index {index} "
+                        f"with {backend_name} backend"
+                    )
+                    return camera
+                except Exception as e:
+                    print(
+                        f"[System] Camera index {index} "
+                        f"with backend {backend_name} failed: {e}"
+                    )
+
+        return None
 
     def start(self, mode="hand", voice_enabled=False):
         """Start the control system.
@@ -102,13 +149,10 @@ class TouchlessControlSystem:
             print("[System] Voice-only mode started successfully")
             return True
 
-        # Open camera
-        self.camera = cv2.VideoCapture(config.CAMERA_INDEX)
-        self.camera.set(cv2.CAP_PROP_FRAME_WIDTH, config.CAMERA_WIDTH)
-        self.camera.set(cv2.CAP_PROP_FRAME_HEIGHT, config.CAMERA_HEIGHT)
-        self.camera.set(cv2.CAP_PROP_FPS, config.CAMERA_FPS)
+        # Open camera with backend fallback strategy.
+        self.camera = self._open_camera()
 
-        if not self.camera.isOpened():
+        if self.camera is None:
             print("[System] ERROR: Could not open camera")
             self.running = False
             return False
@@ -135,9 +179,16 @@ class TouchlessControlSystem:
         if self.iris_controller:
             self.iris_controller.stop()
 
+        # Release camera first to unblock any in-progress camera.read() call.
+        if self.camera:
+            self.camera.release()
+            self.camera = None
+
         # Wait for thread to finish
+        thread_stopped = True
         if hasattr(self, 'thread'):
-            self.thread.join(timeout=2)
+            self.thread.join(timeout=3)
+            thread_stopped = not self.thread.is_alive()
 
         # Stop voice control
         if self.voice_enabled:
@@ -145,11 +196,13 @@ class TouchlessControlSystem:
             self.voice_enabled = False
 
         # Release resources
-        if self.camera:
-            self.camera.release()
-            self.camera = None
         self.iris_controller = None
-        self.gesture_recognizer.close()
+        with self.frame_lock:
+            self.latest_display_frame = None
+        if thread_stopped:
+            self.gesture_recognizer.close()
+        else:
+            print("[System] Warning: Worker thread did not stop in time; skipping recognizer close")
         self.display_manager.close()
 
         print("[System] Stopped")
@@ -158,18 +211,48 @@ class TouchlessControlSystem:
         """Return current running state for dashboard status sync."""
         return self.running
 
+    def poll_ui_events(self):
+        """Pump OpenCV UI events from the main thread for Windows stability."""
+        if not self.running or self.control_mode != "hand":
+            return
+
+        frame_to_show = None
+        with self.frame_lock:
+            if self.latest_display_frame is not None:
+                frame_to_show = self.latest_display_frame
+
+        if frame_to_show is not None:
+            self.display_manager.show_frame(frame_to_show)
+
+        key = self.display_manager.wait_key(1)
+        if key == ord('q') or key == 27:  # 'q' or ESC
+            print("[System] Quit key pressed")
+            self.stop()
+            return
+
+        if not self.display_manager.is_window_open():
+            print("[System] Camera window closed")
+            self.stop()
+
     def _hand_main_loop(self):
         """Hand-gesture processing loop (runs in separate thread)."""
         last_gesture = config.GESTURE_NONE
+        failed_reads = 0
 
         try:
             while self.running:
                 # Read frame
                 ret, frame = self.camera.read()
                 if not ret:
-                    print("[System] Failed to read frame")
-                    self.running = False
-                    break
+                    failed_reads += 1
+                    if failed_reads >= config.CAMERA_READ_RETRY_LIMIT:
+                        print("[System] ERROR: Camera feed not responding")
+                        self.running = False
+                        break
+                    time.sleep(0.05)
+                    continue
+
+                failed_reads = 0
 
                 # Flip frame horizontally for mirror effect
                 frame = cv2.flip(frame, 1)
@@ -223,21 +306,12 @@ class TouchlessControlSystem:
                 # Draw overlay
                 frame = self.display_manager.draw_overlay(frame, gesture, voice_command, self.fps)
 
-                # Display frame
-                self.display_manager.show_frame(frame)
-
-                # Check for quit key
-                key = self.display_manager.wait_key(1)
-                if key == ord('q') or key == 27:  # 'q' or ESC
-                    print("[System] Quit key pressed")
-                    self.running = False
-                    break
+                # Hand off latest frame for main-thread display.
+                with self.frame_lock:
+                    self.latest_display_frame = frame
         except Exception as e:
             print(f"[System] ERROR in hand loop: {e}")
             self.running = False
-        finally:
-            # Ensure UI resources are cleaned up even on unexpected thread exit.
-            self.display_manager.close()
 
     def _iris_main_loop(self):
         """Iris eye-tracking loop (runs in separate thread)."""
@@ -324,7 +398,8 @@ def main():
     dashboard = Dashboard(
         start_callback=system.start,
         stop_callback=system.stop,
-        status_callback=system.is_running
+        status_callback=system.is_running,
+        ui_event_callback=system.poll_ui_events
     )
 
     print("[Main] Dashboard launched")

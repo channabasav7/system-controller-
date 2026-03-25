@@ -17,11 +17,14 @@ class DisplayManager:
     def __init__(self):
         """Initialize display manager."""
         self.window_name = "Touchless Laptop Control"
+        self.window_ready = False
 
     def setup_window(self):
         """Create and configure the display window."""
+        cv2.startWindowThread()
         cv2.namedWindow(self.window_name, cv2.WINDOW_NORMAL)
         cv2.resizeWindow(self.window_name, config.CAMERA_WIDTH, config.CAMERA_HEIGHT)
+        self.window_ready = True
 
     def draw_overlay(self, frame, gesture, voice_command, fps=0):
         """
@@ -110,7 +113,8 @@ class DisplayManager:
         Args:
             frame: BGR image to display
         """
-        cv2.imshow(self.window_name, frame)
+        if self.window_ready:
+            cv2.imshow(self.window_name, frame)
 
     def wait_key(self, delay=1):
         """
@@ -122,8 +126,20 @@ class DisplayManager:
         Returns:
             int: key code of pressed key, or -1 if no key pressed
         """
+        if not self.window_ready:
+            return -1
         return cv2.waitKey(delay)
+
+    def is_window_open(self):
+        """Return True while the OpenCV window is still open."""
+        if not self.window_ready:
+            return False
+        try:
+            return cv2.getWindowProperty(self.window_name, cv2.WND_PROP_VISIBLE) >= 1
+        except cv2.error:
+            return False
 
     def close(self):
         """Close all OpenCV windows."""
+        self.window_ready = False
         cv2.destroyAllWindows()
