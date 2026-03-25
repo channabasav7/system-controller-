@@ -173,14 +173,21 @@ class GestureRecognizer:
         """
         if results and results.hand_landmarks:
             for hand_landmarks in results.hand_landmarks:
-                # Draw landmarks using MediaPipe's drawing utilities from vision module
-                vision.drawing_utils.draw_landmarks(
-                    frame,
-                    hand_landmarks,
-                    vision.HandLandmarksConnections.HAND_CONNECTIONS,
-                    vision.drawing_styles.get_default_hand_landmarks_style(),
-                    vision.drawing_styles.get_default_hand_connections_style()
-                )
+                height, width, _ = frame.shape
+
+                # Draw landmark points.
+                for landmark in hand_landmarks:
+                    x = int(landmark.x * width)
+                    y = int(landmark.y * height)
+                    cv2.circle(frame, (x, y), 3, config.OVERLAY_COLOR_LANDMARK, -1)
+
+                # Draw hand connections.
+                for start_idx, end_idx in mp.solutions.hands.HAND_CONNECTIONS:
+                    start = hand_landmarks[start_idx]
+                    end = hand_landmarks[end_idx]
+                    x1, y1 = int(start.x * width), int(start.y * height)
+                    x2, y2 = int(end.x * width), int(end.y * height)
+                    cv2.line(frame, (x1, y1), (x2, y2), config.OVERLAY_COLOR_GESTURE, 1)
 
         return frame
 

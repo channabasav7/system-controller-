@@ -64,23 +64,43 @@ class TouchlessControlSystem:
 
         print("[System] Initialization complete")
 
-    def start(self, mode="hand"):
-        """Start the control system."""
+    def start(self, mode="hand", voice_enabled=False):
+        """Start the control system.
+
+        Returns:
+            bool: True if startup succeeded, False otherwise.
+        """
         if self.running:
             print("[System] Already running")
-            return
+            return True
 
         self.control_mode = mode
-        print(f"[System] Starting in {self.control_mode} mode...")
+        self.voice_enabled = voice_enabled
+        print(
+            f"[System] Starting in {self.control_mode} mode "
+            f"(voice {'on' if self.voice_enabled else 'off'})..."
+        )
         self.running = True
 
+        if self.voice_enabled:
+            self.voice_controller.start_listening()
+
         if self.control_mode == "iris":
-            iris_config = os.path.join(os.path.dirname(__file__), "iris", "config.yaml")
-            self.iris_controller = EyeMouseController(config_path=iris_config)
-            self.thread = threading.Thread(target=self._iris_main_loop, daemon=True)
-            self.thread.start()
-            print("[System] Iris mode started successfully")
-            return
+            try:
+                iris_config = os.path.join(os.path.dirname(__file__), "iris", "config.yaml")
+                self.iris_controller = EyeMouseController(config_path=iris_config)
+                self.thread = threading.Thread(target=self._iris_main_loop, daemon=True)
+                self.thread.start()
+                print("[System] Iris mode started successfully")
+                return True
+            except Exception as e:
+                print(f"[System] ERROR: Failed to start iris mode: {e}")
+                self.running = False
+                return False
+
+        if self.control_mode == "voice":
+            print("[System] Voice-only mode started successfully")
+            return True
 
         # Open camera
         self.camera = cv2.VideoCapture(config.CAMERA_INDEX)
@@ -91,7 +111,7 @@ class TouchlessControlSystem:
         if not self.camera.isOpened():
             print("[System] ERROR: Could not open camera")
             self.running = False
-            return
+            return False
 
         # Setup display
         self.display_manager.setup_window()
@@ -101,6 +121,7 @@ class TouchlessControlSystem:
         self.thread.start()
 
         print("[System] Hand mode started successfully")
+        return True
 
     def stop(self):
         """Stop the control system."""
@@ -121,6 +142,7 @@ class TouchlessControlSystem:
         # Stop voice control
         if self.voice_enabled:
             self.voice_controller.stop_listening()
+            self.voice_enabled = False
 
         # Release resources
         if self.camera:
@@ -132,91 +154,90 @@ class TouchlessControlSystem:
 
         print("[System] Stopped")
 
-    def toggle_voice_control(self, enabled):
-        """
-        Enable or disable voice control.
-
-        Args:
-            enabled: bool, True to enable voice control
-        """
-        self.voice_enabled = enabled
-        if enabled:
-            self.voice_controller.start_listening()
-        else:
-            self.voice_controller.stop_listening()
+    def is_running(self):
+        """Return current running state for dashboard status sync."""
+        return self.running
 
     def _hand_main_loop(self):
         """Hand-gesture processing loop (runs in separate thread)."""
         last_gesture = config.GESTURE_NONE
 
-        while self.running:
-            # Read frame
-            ret, frame = self.camera.read()
-            if not ret:
-                print("[System] Failed to read frame")
-                break
+        try:
+            while self.running:
+                # Read frame
+                ret, frame = self.camera.read()
+                if not ret:
+                    print("[System] Failed to read frame")
+                    self.running = False
+                    break
 
-            # Flip frame horizontally for mirror effect
-            frame = cv2.flip(frame, 1)
+                # Flip frame horizontally for mirror effect
+                frame = cv2.flip(frame, 1)
 
-            # Process frame with MediaPipe
-            results, rgb_frame = self.gesture_recognizer.process_frame(frame)
+                # Process frame with MediaPipe
+                results, rgb_frame = self.gesture_recognizer.process_frame(frame)
 
-            gesture = config.GESTURE_NONE
+                gesture = config.GESTURE_NONE
 
-            # If hand detected
-            if results and results.hand_landmarks:
-                for hand_landmarks in results.hand_landmarks:
-                    # Draw landmarks
-                    frame = self.gesture_recognizer.draw_landmarks(frame, results)
+                # If hand detected
+                if results and results.hand_landmarks:
+                    for hand_landmarks in results.hand_landmarks:
+                        # Draw landmarks
+                        frame = self.gesture_recognizer.draw_landmarks(frame, results)
 
-                    # Recognize gesture
-                    # MediaPipe Tasks API returns hand_landmarks directly as list of landmarks
-                    landmarks = hand_landmarks
-                    gesture = self.gesture_recognizer.recognize_gesture(landmarks)
+                        # Recognize gesture
+                        # MediaPipe Tasks API returns hand_landmarks directly as list of landmarks
+                        landmarks = hand_landmarks
+                        gesture = self.gesture_recognizer.recognize_gesture(landmarks)
 
-                    # Get cursor position
-                    raw_x, raw_y = self.gesture_recognizer.get_cursor_position(
-                        landmarks,
-                        config.CAMERA_WIDTH,
-                        config.CAMERA_HEIGHT
-                    )
+                        # Get cursor position
+                        raw_x, raw_y = self.gesture_recognizer.get_cursor_position(
+                            landmarks,
+                            config.CAMERA_WIDTH,
+                            config.CAMERA_HEIGHT
+                        )
 
-                    # Smooth cursor position
-                    smooth_x, smooth_y = self.cursor_smoother.smooth(raw_x, raw_y)
+                        # Smooth cursor position
+                        smooth_x, smooth_y = self.cursor_smoother.smooth(raw_x, raw_y)
 
-                    # Execute actions based on gesture
-                    self._execute_gesture_action(gesture, smooth_x, smooth_y, last_gesture)
+                        # Execute actions based on gesture
+                        self._execute_gesture_action(gesture, smooth_x, smooth_y, last_gesture)
 
-                    last_gesture = gesture
-                    break  # Only process first hand
+                        last_gesture = gesture
+                        break  # Only process first hand
 
-            # Update cooldown
-            self.gesture_recognizer.update_cooldown()
+                # Update cooldown
+                self.gesture_recognizer.update_cooldown()
 
-            # Get voice command
-            voice_command = self.voice_controller.get_last_command() if self.voice_enabled else ""
+                # Get voice command
+                voice_command = self.voice_controller.get_last_command() if self.voice_enabled else ""
 
-            # Calculate FPS
-            self.frame_count += 1
-            elapsed = time.time() - self.fps_start_time
-            if elapsed >= 1.0:
-                self.fps = self.frame_count / elapsed
-                self.frame_count = 0
-                self.fps_start_time = time.time()
+                # Calculate FPS
+                self.frame_count += 1
+                elapsed = time.time() - self.fps_start_time
+                if elapsed >= 1.0:
+                    self.fps = self.frame_count / elapsed
+                    self.frame_count = 0
+                    self.fps_start_time = time.time()
 
-            # Draw overlay
-            frame = self.display_manager.draw_overlay(frame, gesture, voice_command, self.fps)
+                # Draw overlay
+                frame = self.display_manager.draw_overlay(frame, gesture, voice_command, self.fps)
 
-            # Display frame
-            self.display_manager.show_frame(frame)
+                # Display frame
+                self.display_manager.show_frame(frame)
 
-            # Check for quit key
-            key = self.display_manager.wait_key(1)
-            if key == ord('q') or key == 27:  # 'q' or ESC
-                print("[System] Quit key pressed")
-                self.running = False
-                break
+                # Check for quit key
+                key = self.display_manager.wait_key(1)
+                if key == ord('q') or key == 27:  # 'q' or ESC
+                    print("[System] Quit key pressed")
+                    self.running = False
+                    break
+        except Exception as e:
+            print(f"[System] ERROR in hand loop: {e}")
+            self.running = False
+        finally:
+            # Ensure UI resources are cleaned up even on unexpected thread exit.
+            self.display_manager.close()
 
     def _iris_main_loop(self):
         """Iris eye-tracking loop (runs in separate thread)."""
@@ -303,7 +324,7 @@ def main():
     dashboard = Dashboard(
         start_callback=system.start,
         stop_callback=system.stop,
-        voice_toggle_callback=system.toggle_voice_control
+        status_callback=system.is_running
     )
 
     print("[Main] Dashboard launched")

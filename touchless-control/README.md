@@ -113,8 +113,12 @@ The script will automatically:
 
 3. **Use the dashboard**:
    - Click **"Start System"** to begin
-   - Choose **Control Mode**: `Hand Gesture` or `Iris Eye Tracking`
-   - Enable **"Voice Control"** checkbox for voice commands
+   - Choose a **Mode**:
+     - `Hand Gestures`
+     - `Hand Gestures + Voice`
+     - `Eye Tracking`
+     - `Eye Tracking + Voice`
+     - `Voice Commands Only`
    - Adjust **"Cursor Smoothing"** slider for sensitivity
 
 4. **If using Iris Eye Tracking mode**:
