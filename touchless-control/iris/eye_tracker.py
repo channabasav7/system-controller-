@@ -17,7 +17,6 @@ Requirements:
 """
 
 import cv2
-import mediapipe as mp
 import numpy as np
 import pyautogui
 import time
@@ -28,6 +27,11 @@ from dataclasses import dataclass, field
 from typing import Optional, Tuple, List
 from enum import Enum
 from collections import deque
+
+# New MediaPipe API
+from mediapipe.tasks import python
+from mediapipe.tasks.python import vision
+import mediapipe as mp
 
 # ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -134,7 +138,7 @@ class KalmanCursorFilter:
 
         self.kf.predict()
         estimated = self.kf.correct(measurement)
-        return float(estimated[0]), float(estimated[1])
+        return float(estimated[0][0]), float(estimated[1][0])
 
     def reset(self):
         self._initialized = False
@@ -412,7 +416,7 @@ class OverlayRenderer:
         overlay = frame.copy()
 
         # Semi-transparent dark bar at top
-        cv2.rectangle(overlay, (0, 0), (w, 90), (0, 0, 0), -1)
+        cv2.rectangle(overlay, (0, 0), (w, 110), (0, 0, 0), -1)
         cv2.addWeighted(overlay, 0.55, frame, 0.45, 0, frame)
 
         def txt(text, x, y, color=(220, 220, 220), scale=0.45):
@@ -422,8 +426,21 @@ class OverlayRenderer:
         txt(f"EAR L:{left_ear:.2f} R:{right_ear:.2f}", 10, 36)
         txt(f"Pose  P:{pitch:+.1f} Y:{yaw:+.1f} R:{roll:+.1f}", 10, 54)
 
+        # Status message
+        if calibration_state == CalibrationMode.IDLE:
+            status = "Status: IDLE - Waiting for calibration (press C)"
+            status_color = (200, 100, 100)
+        elif calibration_state == CalibrationMode.RUNNING:
+            status = f"Status: CALIBRATING... {calibration_progress*100:.0f}%"
+            status_color = (100, 200, 100)
+        else:  # COMPLETE
+            status = "Status: READY - Eye tracking active"
+            status_color = (100, 255, 100)
+        
+        txt(status, 10, 72, status_color, 0.5)
+        
         if cursor_pos:
-            txt(f"Cursor ({cursor_pos[0]:.0f}, {cursor_pos[1]:.0f})", 10, 72)
+            txt(f"Cursor: ({cursor_pos[0]:.0f}, {cursor_pos[1]:.0f})", 10, 90, (100, 200, 255))
 
         # Dwell progress arc
         if dwell_progress > 0.01 and cursor_pos:
@@ -444,6 +461,9 @@ class OverlayRenderer:
             cv2.ellipse(frame, (tx, ty), (18, 18), -90, 0,
                         int(360 * calibration_progress), (0, 255, 100), 2)
             txt("CALIBRATING — look at circle", w // 2 - 100, h - 20, (0, 200, 255), 0.5)
+        
+        # Help text at bottom
+        txt("[C] Calibrate  [R] Reset  [Q] Quit", 10, h - 10, (200, 200, 200), 0.4)
 
 
 # ── Main Controller ───────────────────────────────────────────────────────────
@@ -473,14 +493,15 @@ class EyeMouseController:
         self.overlay   = OverlayRenderer()
         self.pose_est  = None  # initialized after first frame
 
-        # MediaPipe
-        self.mp_face   = mp.solutions.face_mesh
-        self.face_mesh = self.mp_face.FaceMesh(
-            max_num_faces=1,
-            refine_landmarks=True,       # required for iris landmarks 468–477
-            min_detection_confidence=0.6,
-            min_tracking_confidence=0.5,
+        # MediaPipe - new API (tasks)
+        base_options = python.BaseOptions(model_asset_path=self._get_face_landmarker_model())
+        options = vision.FaceLandmarkerOptions(
+            base_options=base_options,
+            output_face_blendshapes=False,
+            output_facial_transformation_matrixes=False,
+            num_faces=1
         )
+        self.face_landmarker = vision.FaceLandmarker.create_from_options(options)
 
         # State
         self._ema_pos: Optional[Tuple[float, float]] = None
@@ -489,8 +510,32 @@ class EyeMouseController:
         self._last_t = time.time()
         self._stop_event = threading.Event()
         self._running = False
+        self._face_detected_frames = 0  # Track consecutive frames with face detected
+        self._auto_calibration_delayed = False  # Whether auto-calibration timer started
 
     # ── Iris extraction ───────────────────────────────────────────────────────
+
+    def _get_face_landmarker_model(self) -> str:
+        """Get path to face landmarker model. Downloads if needed."""
+        try:
+            import mediapipe.tasks.python.vision as vision_module
+            # Try to get builtin model path
+            return "mediapipe/tasks/python/assets/models/face_landmarker.task"
+        except:
+            pass
+        
+        # Fallback: check local directory
+        model_path = os.path.join(os.path.dirname(__file__), "face_landmarker.task")
+        if os.path.exists(model_path):
+            return model_path
+        
+        # If not found, raise error with instructions
+        raise FileNotFoundError(
+            "\nface_landmarker.task model not found!\n"
+            "Download from:\n"
+            "https://storage.googleapis.com/mediapipe-assets/face_landmarker.task\n"
+            "Place in: " + os.path.dirname(__file__)
+        )
 
     def _get_iris_center(
         self,
@@ -517,17 +562,19 @@ class EyeMouseController:
         tvec: Optional[np.ndarray] = None,
     ) -> Optional[Tuple[float, float]]:
         """Map iris pixel position to screen coordinates via calibration model."""
-        point = iris_xy.copy()
+        point = np.array([float(iris_xy[0]), float(iris_xy[1])])
 
         # Head pose compensation: subtract yaw/pitch contribution
         if self.cfg.use_head_pose_compensation and rvec is not None:
             _, yaw, _ = self.pose_est.get_angles(rvec)
             pitch, _, _ = self.pose_est.get_angles(rvec)
-            point[0] -= yaw   * 1.5
-            point[1] -= pitch * 1.5
+            point[0] -= float(yaw) * 1.5
+            point[1] -= float(pitch) * 1.5
 
         mapped = self.calibrator.map(point)
-        return mapped
+        if mapped:
+            return float(mapped[0]), float(mapped[1])
+        return None
 
     # ── EMA fallback ──────────────────────────────────────────────────────────
 
@@ -597,15 +644,36 @@ class EyeMouseController:
             fps = np.mean(self._fps_deque)
 
             # ── Inference ────────────────────────────────────────────────────
-            results = self.face_mesh.process(rgb)
+            # Convert frame to MediaPipe Image
+            mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb)
+            results = self.face_landmarker.detect(mp_image)
 
             left_ear = right_ear = 0.3
             pitch = yaw = roll = 0.0
             cursor_pos = self._prev_cursor
             rvec = tvec = None
 
-            if results.multi_face_landmarks:
-                lms = results.multi_face_landmarks[0].landmark
+            if results.face_landmarks:
+                # Convert normalized landmarks to pixel coordinates
+                lms_data = results.face_landmarks[0]
+                lms = []
+                for lm in lms_data:
+                    # Create a simple object to hold normalized coordinates
+                    class Landmark:
+                        def __init__(self, x, y, z=0.0):
+                            self.x = x
+                            self.y = y
+                            self.z = z
+                    lms.append(Landmark(lm.x, lm.y, lm.z))
+
+                # Track consecutive face detections for auto-calibration
+                self._face_detected_frames += 1
+                if self._face_detected_frames > 30 and not self._auto_calibration_delayed:
+                    # After 1 second of stable face detection, auto-start calibration
+                    self.calibrator.reset()
+                    self.kalman.reset()
+                    self._auto_calibration_delayed = True
+                    print("[Auto-calibration started — look at each circle (or press 'C' to restart)]")
 
                 # EAR
                 left_ear  = eye_aspect_ratio(lms, LEFT_EYE_LANDMARKS,  w, h)
@@ -638,10 +706,21 @@ class EyeMouseController:
                             if self.clicker.process(left_ear, right_ear, (sx, sy)):
                                 pyautogui.click()
                                 print(f"[Click] at ({sx:.0f}, {sy:.0f})")
+            else:
+                # No face detected, reset auto-calibration counter
+                self._face_detected_frames = 0
 
             # Draw iris points
-            if self.cfg.show_overlay and results.multi_face_landmarks:
-                lms = results.multi_face_landmarks[0].landmark
+            if self.cfg.show_overlay and results.face_landmarks:
+                lms_data = results.face_landmarks[0]
+                lms = []
+                for lm in lms_data:
+                    class Landmark:
+                        def __init__(self, x, y, z=0.0):
+                            self.x = x
+                            self.y = y
+                            self.z = z
+                    lms.append(Landmark(lm.x, lm.y, lm.z))
                 for idx in [IRIS_LEFT_CENTER, IRIS_RIGHT_CENTER]:
                     ix = int(lms[idx].x * w)
                     iy = int(lms[idx].y * h)
@@ -675,7 +754,8 @@ class EyeMouseController:
 
         cap.release()
         cv2.destroyAllWindows()
-        self.face_mesh.close()
+        if hasattr(self, 'face_landmarker'):
+            del self.face_landmarker
         self._running = False
 
     def stop(self):

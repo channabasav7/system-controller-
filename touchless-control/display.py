@@ -47,14 +47,20 @@ class DisplayManager:
         cv2.rectangle(frame, (0, 0), (width, 105), (40, 40, 40), -1)
 
         # ────────────── Gesture status ──────────────────────────────────────
-        gesture_text = f"Gesture: {gesture}"
+        if gesture == "None" or gesture == config.GESTURE_NONE:
+            gesture_display = "Gesture: Waiting for hand..."
+            gesture_color = (100, 100, 100)  # Gray
+        else:
+            gesture_display = f"Gesture: {gesture}"
+            gesture_color = config.OVERLAY_COLOR_GESTURE
+        
         cv2.putText(
             frame,
-            gesture_text,
+            gesture_display,
             (10, 30),
             cv2.FONT_HERSHEY_SIMPLEX,
             config.OVERLAY_FONT_SCALE,
-            config.OVERLAY_COLOR_GESTURE,
+            gesture_color,
             config.OVERLAY_THICKNESS
         )
 

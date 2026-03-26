@@ -137,22 +137,25 @@ class TouchlessControlSystem:
             self.voice_controller.start_listening()
 
         if self.control_mode == "iris":
+            # Initialize iris controller for eye tracking
             try:
-                iris_config = os.path.join(os.path.dirname(__file__), "iris", "config.yaml")
-                self.iris_controller = EyeMouseController(config_path=iris_config)
+                self.iris_controller = EyeMouseController()
+                # Run iris loop in separate thread
                 self.thread = threading.Thread(target=self._iris_main_loop, daemon=True)
                 self.thread.start()
-                print("[System] Iris mode started successfully")
+                print("[System] Iris (eye-tracking) mode started successfully")
                 return True
             except Exception as e:
-                print(f"[System] ERROR: Failed to start iris mode: {e}")
-                self.running = False
-                return False
-
+                print(f"[System] ERROR: Could not start iris mode: {e}")
+                print("[System] Falling back to hand gesture mode")
+                self.control_mode = "hand"
+                # Continue with hand mode below
+        
         if self.control_mode == "voice":
             print("[System] Voice-only mode started successfully")
             return True
 
+        # Hand mode or fallback from iris mode
         # Open camera with backend fallback strategy.
         self.camera = self._open_camera()
 
