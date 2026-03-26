@@ -236,14 +236,28 @@ class GestureRecognizer:
         Returns:
             (x, y): screen coordinates
         """
-        # Use index finger MCP (knuckle) for cursor position
-        cursor_landmark = landmarks[5]
+        # Blend index tip (precision) and MCP (stability).
+        tip = landmarks[8]
+        mcp = landmarks[5]
+        w_tip = config.CURSOR_TIP_WEIGHT
+        x_norm = (w_tip * tip.x) + ((1.0 - w_tip) * mcp.x)
+        y_norm = (w_tip * tip.y) + ((1.0 - w_tip) * mcp.y)
 
-        # Convert normalized coordinates to screen coordinates
-        screen_x = int(cursor_landmark.x * config.SCREEN_WIDTH)
-        screen_y = int(cursor_landmark.y * config.SCREEN_HEIGHT)
+        # Map only the center active region of camera to full screen.
+        mx = config.CURSOR_ACTIVE_MARGIN_X
+        my = config.CURSOR_ACTIVE_MARGIN_Y
+        x_norm = (x_norm - mx) / max(1e-6, (1.0 - 2.0 * mx))
+        y_norm = (y_norm - my) / max(1e-6, (1.0 - 2.0 * my))
 
-        # Invert X for natural movement
+        # Clamp to valid normalized range.
+        x_norm = max(0.0, min(1.0, x_norm))
+        y_norm = max(0.0, min(1.0, y_norm))
+
+        # Convert normalized coordinates to screen coordinates.
+        screen_x = int(x_norm * config.SCREEN_WIDTH)
+        screen_y = int(y_norm * config.SCREEN_HEIGHT)
+
+        # Invert X for mirror camera behavior.
         screen_x = config.SCREEN_WIDTH - screen_x
 
         return screen_x, screen_y

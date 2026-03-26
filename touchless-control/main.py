@@ -44,6 +44,11 @@ class TouchlessControlSystem:
             smoothing_factor=config.SMOOTHING_FACTOR,
             dead_zone=config.DEAD_ZONE_RADIUS
         )
+        self.cursor_smoother.configure_adaptive(
+            alpha_min=config.SMOOTHING_ALPHA_MIN,
+            alpha_max=config.SMOOTHING_ALPHA_MAX,
+            velocity_scale=config.SMOOTHING_VELOCITY_SCALE,
+        )
 
         # Voice control (initialized but not started)
         self.voice_controller = VoiceController(

@@ -12,11 +12,11 @@ use_head_pose_compensation: true
 
 # ── Smoothing ────────────────────────────────────────
 # Kalman filter — lower process_noise = smoother but more lag
-kalman_process_noise:     0.001
-kalman_measurement_noise: 0.1
+kalman_process_noise:     0.0007
+kalman_measurement_noise: 0.08
 
 # EMA alpha — how quickly to follow new positions (0.1 sluggish … 0.5 fast)
-ema_alpha: 0.25
+ema_alpha: 0.20
 
 # ── Click Detection ──────────────────────────────────
 # Blink click
@@ -31,7 +31,7 @@ dwell_radius_px:     40      # Pixel radius considered "same spot"
 
 # ── Cursor Movement ──────────────────────────────────
 cursor_speed_scale: 1.0      # Multiply mapped screen coords (>1 = faster)
-deadzone_px:        4        # Ignore movements smaller than this
+deadzone_px:        2        # Ignore movements smaller than this
 
 # ── Debug ────────────────────────────────────────────
 show_overlay: true

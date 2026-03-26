@@ -273,8 +273,9 @@ class Calibrator:
         """Feed one iris sample while user fixates on current target."""
         self._current_samples.append(iris_xy.copy())
         if len(self._current_samples) >= self._samples_per_point:
-            avg = np.mean(self._current_samples, axis=0)
-            self.collected_iris.append(avg)
+            # Median is more robust to micro-saccade outliers than mean.
+            med = np.median(np.array(self._current_samples), axis=0)
+            self.collected_iris.append(med)
             self.collected_screen.append(np.array(self.targets[self.current_idx]))
             self._current_samples.clear()
             self.current_idx += 1
@@ -295,8 +296,9 @@ class Calibrator:
         Xp = poly.fit_transform(X)
 
         self._poly = poly
-        self._model_x = Ridge(alpha=1.0).fit(Xp, Sy)
-        self._model_y = Ridge(alpha=1.0).fit(Xp, Sx)
+        # Correct axis mapping: model_x -> screen X, model_y -> screen Y.
+        self._model_x = Ridge(alpha=1.0).fit(Xp, Sx)
+        self._model_y = Ridge(alpha=1.0).fit(Xp, Sy)
 
     def map(self, iris_xy: np.ndarray) -> Optional[Tuple[float, float]]:
         if self._model_x is None:

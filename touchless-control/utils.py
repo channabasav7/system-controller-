@@ -99,6 +99,17 @@ class CursorSmoother:
         self.prev_x = None
         self.prev_y = None
 
+        # Adaptive smoothing bounds and motion scaling.
+        self.alpha_min = 0.18
+        self.alpha_max = 0.55
+        self.velocity_scale = 120.0
+
+    def configure_adaptive(self, alpha_min=0.18, alpha_max=0.55, velocity_scale=120.0):
+        """Configure adaptive smoothing parameters."""
+        self.alpha_min = alpha_min
+        self.alpha_max = alpha_max
+        self.velocity_scale = max(1.0, velocity_scale)
+
     def smooth(self, raw_x, raw_y):
         """
         Smooth the raw coordinates using exponential moving average.
@@ -116,9 +127,16 @@ class CursorSmoother:
             self.prev_y = raw_y
             return raw_x, raw_y
 
-        # Exponential moving average
-        smooth_x = self.alpha * raw_x + (1 - self.alpha) * self.prev_x
-        smooth_y = self.alpha * raw_y + (1 - self.alpha) * self.prev_y
+        # Adaptive alpha: move faster when far away, smoother when near target.
+        delta_x = raw_x - self.prev_x
+        delta_y = raw_y - self.prev_y
+        velocity = math.sqrt(delta_x**2 + delta_y**2)
+        v_norm = min(1.0, velocity / self.velocity_scale)
+        alpha = self.alpha_min + (self.alpha_max - self.alpha_min) * v_norm
+
+        # Exponential moving average with adaptive alpha.
+        smooth_x = alpha * raw_x + (1 - alpha) * self.prev_x
+        smooth_y = alpha * raw_y + (1 - alpha) * self.prev_y
 
         # Apply dead‑zone
         dist = math.sqrt((smooth_x - self.prev_x)**2 + (smooth_y - self.prev_y)**2)

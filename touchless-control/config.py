@@ -41,10 +41,22 @@ ACTION_COOLDOWN_FRAMES = 15
 
 # ──────────────────────────── Cursor Smoothing ───────────────────────────
 # Exponential moving‑average factor (0 = max smooth, 1 = no smoothing)
-SMOOTHING_FACTOR = 0.4
+SMOOTHING_FACTOR = 0.25
 
 # Dead‑zone radius in pixels — movements smaller than this are ignored
-DEAD_ZONE_RADIUS = 5
+DEAD_ZONE_RADIUS = 3
+
+# Adaptive smoothing: fast motion uses higher alpha, slow motion uses lower alpha.
+SMOOTHING_ALPHA_MIN = 0.18
+SMOOTHING_ALPHA_MAX = 0.55
+SMOOTHING_VELOCITY_SCALE = 120.0
+
+# Hand active region margins for cursor mapping (0.0 to 0.5)
+CURSOR_ACTIVE_MARGIN_X = 0.08
+CURSOR_ACTIVE_MARGIN_Y = 0.08
+
+# Weighted blend for index tip + MCP for stable but precise pointing.
+CURSOR_TIP_WEIGHT = 0.7
 
 # ──────────────────────────── Drag & Drop ────────────────────────────────
 DRAG_START_FRAMES = 5  # frames of pinch before drag mode activates
