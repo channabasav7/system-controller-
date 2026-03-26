@@ -8,6 +8,7 @@ classification based on finger states and landmark distances.
 import cv2
 import mediapipe as mp
 import time
+from collections import deque
 from mediapipe.tasks import python
 from mediapipe.tasks.python import vision
 import config
@@ -57,6 +58,9 @@ class GestureRecognizer:
         # Scroll reference position
         self.scroll_ref_y = None
 
+        # Dynamic motion history (wrist positions)
+        self.motion_history = deque(maxlen=config.SWIPE_HISTORY_FRAMES)
+
     def process_frame(self, frame):
         """
         Process a single frame and detect hands.
@@ -86,6 +90,10 @@ class GestureRecognizer:
         fingers_up = get_fingers_up(landmarks)
         num_fingers = count_fingers(fingers_up)
 
+        # Thumb orientation from tip and IP x-positions (camera-mirrored frame).
+        thumb_up = landmarks[4].x < landmarks[3].x
+        thumb_down = landmarks[4].x > landmarks[3].x
+
         # ────────────── Calculate key distances ──────────────────────────────
         # Index finger tip (8) to thumb tip (4)
         index_thumb_dist = euclidean_distance(
@@ -93,10 +101,10 @@ class GestureRecognizer:
             (landmarks[4].x, landmarks[4].y)
         )
 
-        # Middle finger tip (12) to thumb tip (4)
-        middle_thumb_dist = euclidean_distance(
-            (landmarks[12].x, landmarks[12].y),
-            (landmarks[4].x, landmarks[4].y)
+        # Index-middle separation for distinguishing scroll vs slide gesture
+        index_middle_dist = euclidean_distance(
+            (landmarks[8].x, landmarks[8].y),
+            (landmarks[12].x, landmarks[12].y)
         )
 
         # ────────────── Gesture classification ───────────────────────────────
@@ -126,22 +134,15 @@ class GestureRecognizer:
 
             # 4. Two fingers up (index + middle) → Scroll Up
             if fingers_up[1] and fingers_up[2] and not fingers_up[3] and not fingers_up[4]:
+                if index_middle_dist > config.PEACE_THRESHOLD:
+                    return config.GESTURE_NEXT_SLIDE
                 return config.GESTURE_SCROLL_UP
 
             # 5. Five fingers up → Scroll Down
             if fingers_up[0] and fingers_up[1] and fingers_up[2] and fingers_up[3] and fingers_up[4]:
                 return config.GESTURE_SCROLL_DOWN
 
-            # 6. Peace sign (index + middle, spread) → Next Slide
-            if fingers_up[1] and fingers_up[2] and not fingers_up[3] and not fingers_up[4]:
-                index_middle_dist = euclidean_distance(
-                    (landmarks[8].x, landmarks[8].y),
-                    (landmarks[12].x, landmarks[12].y)
-                )
-                if index_middle_dist > config.PEACE_THRESHOLD:
-                    return config.GESTURE_NEXT_SLIDE
-
-            # 7. Three fingers up (spread) → Previous Slide
+            # 6. Three fingers up (spread) → Previous Slide
             if fingers_up[1] and fingers_up[2] and fingers_up[3] and not fingers_up[4]:
                 three_finger_dist = euclidean_distance(
                     (landmarks[8].x, landmarks[8].y),
@@ -150,8 +151,78 @@ class GestureRecognizer:
                 if three_finger_dist > config.PEACE_THRESHOLD:
                     return config.GESTURE_PREV_SLIDE
 
+            # 7. Thumb-only gestures for audio control
+            if fingers_up[0] and num_fingers == 1:
+                if thumb_up:
+                    return config.GESTURE_VOLUME_UP
+                if thumb_down:
+                    return config.GESTURE_VOLUME_DOWN
+
         # 8. Default → Move cursor
         return config.GESTURE_MOVE
+
+    def detect_dynamic_gesture(self, landmarks):
+        """Detect simple swipe gestures from wrist motion history."""
+        wrist = landmarks[0]
+        self.motion_history.append((wrist.x, wrist.y))
+
+        if len(self.motion_history) < self.motion_history.maxlen:
+            return config.GESTURE_NONE
+
+        start_x, start_y = self.motion_history[0]
+        end_x, end_y = self.motion_history[-1]
+        dx = end_x - start_x
+        dy = end_y - start_y
+
+        if abs(dx) > abs(dy) and abs(dx) >= config.SWIPE_THRESHOLD:
+            self.motion_history.clear()
+            if dx > 0:
+                return config.GESTURE_SWIPE_RIGHT
+            return config.GESTURE_SWIPE_LEFT
+
+        if abs(dy) >= config.SWIPE_THRESHOLD:
+            self.motion_history.clear()
+            if dy > 0:
+                return config.GESTURE_SWIPE_DOWN
+            return config.GESTURE_SWIPE_UP
+
+        return config.GESTURE_NONE
+
+    def recognize_two_hand_gesture(self, hand_landmarks_list):
+        """Recognize two-hand gestures using finger states and hand separation."""
+        if not hand_landmarks_list or len(hand_landmarks_list) < 2:
+            return config.GESTURE_NONE
+
+        first = hand_landmarks_list[0]
+        second = hand_landmarks_list[1]
+        first_fingers = get_fingers_up(first)
+        second_fingers = get_fingers_up(second)
+        first_count = count_fingers(first_fingers)
+        second_count = count_fingers(second_fingers)
+
+        first_palm = first[0]
+        second_palm = second[0]
+        palm_dist = euclidean_distance((first_palm.x, first_palm.y), (second_palm.x, second_palm.y))
+
+        first_pinch = euclidean_distance((first[8].x, first[8].y), (first[4].x, first[4].y)) < config.TOUCH_THRESHOLD
+        second_pinch = euclidean_distance((second[8].x, second[8].y), (second[4].x, second[4].y)) < config.TOUCH_THRESHOLD
+
+        if first_count == 5 and second_count == 5:
+            return config.GESTURE_TWO_HAND_LOCK
+
+        if first_count == 0 and second_count == 0:
+            return config.GESTURE_TWO_HAND_PASTE
+
+        if (first_count == 0 and second_pinch) or (second_count == 0 and first_pinch):
+            return config.GESTURE_TWO_HAND_COPY
+
+        if palm_dist >= config.TWO_HAND_SPREAD_THRESHOLD:
+            return config.GESTURE_TWO_HAND_ZOOM_IN
+
+        if palm_dist <= config.TWO_HAND_CLOSE_THRESHOLD:
+            return config.GESTURE_TWO_HAND_ZOOM_OUT
+
+        return config.GESTURE_NONE
 
     def get_cursor_position(self, landmarks, frame_width, frame_height):
         """

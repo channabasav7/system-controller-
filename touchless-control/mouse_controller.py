@@ -130,3 +130,97 @@ class MouseController:
     def take_screenshot(self):
         """Take a screenshot (Win+Shift+S on Windows 10/11)."""
         self.hotkey("win", "shift", "s")
+
+    def volume_up(self):
+        """Increase system volume."""
+        self.press_key("volumeup")
+
+    def volume_down(self):
+        """Decrease system volume."""
+        self.press_key("volumedown")
+
+    def mute_audio(self):
+        """Toggle system mute."""
+        self.press_key("volumemute")
+
+    def lock_screen(self):
+        """Lock the current user session (Win+L)."""
+        self.hotkey("win", "l")
+
+    def switch_window(self):
+        """Switch to next window (Alt+Tab)."""
+        self.hotkey("alt", "tab")
+
+    def open_task_manager(self):
+        """Open Windows Task Manager."""
+        self.hotkey("ctrl", "shift", "esc")
+
+    def copy(self):
+        """Copy selected content."""
+        self.hotkey("ctrl", "c")
+
+    def paste(self):
+        """Paste from clipboard."""
+        self.hotkey("ctrl", "v")
+
+    def select_all(self):
+        """Select all content in active app."""
+        self.hotkey("ctrl", "a")
+
+    def undo(self):
+        """Undo last action."""
+        self.hotkey("ctrl", "z")
+
+    def redo(self):
+        """Redo last undone action."""
+        self.hotkey("ctrl", "y")
+
+    def bold(self):
+        """Toggle bold formatting."""
+        self.hotkey("ctrl", "b")
+
+    def italic(self):
+        """Toggle italic formatting."""
+        self.hotkey("ctrl", "i")
+
+    def underline(self):
+        """Toggle underline formatting."""
+        self.hotkey("ctrl", "u")
+
+    def align_left(self):
+        """Align paragraph left in common editors."""
+        self.hotkey("ctrl", "l")
+
+    def center_align(self):
+        """Center paragraph in common editors."""
+        self.hotkey("ctrl", "e")
+
+    def save_document(self):
+        """Save active document."""
+        self.hotkey("ctrl", "s")
+
+    def new_paragraph(self):
+        """Insert a paragraph break."""
+        self.press_key("enter")
+
+    def zoom_in(self):
+        """Zoom in active view."""
+        self.hotkey("ctrl", "+")
+
+    def zoom_out(self):
+        """Zoom out active view."""
+        self.hotkey("ctrl", "-")
+
+    def browser_back(self):
+        """Navigate back in browser/history."""
+        self.hotkey("alt", "left")
+
+    def browser_forward(self):
+        """Navigate forward in browser/history."""
+        self.hotkey("alt", "right")
+
+    def type_text(self, text):
+        """Type text into the active application."""
+        if not text:
+            return
+        pyautogui.typewrite(text)

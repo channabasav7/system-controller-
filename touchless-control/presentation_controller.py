@@ -37,6 +37,13 @@ class PresentationController:
         """Go to previous slide (Left arrow or Page Up)."""
         pyautogui.press("left")
 
+    def go_to_slide(self, slide_number):
+        """Jump to a specific slide number in slideshow mode."""
+        if slide_number <= 0:
+            return
+        pyautogui.typewrite(str(slide_number))
+        pyautogui.press("enter")
+
     def toggle_blackout(self):
         """Toggle screen blackout (B key in PowerPoint)."""
         pyautogui.press("b")

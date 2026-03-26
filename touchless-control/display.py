@@ -26,7 +26,7 @@ class DisplayManager:
         cv2.resizeWindow(self.window_name, config.CAMERA_WIDTH, config.CAMERA_HEIGHT)
         self.window_ready = True
 
-    def draw_overlay(self, frame, gesture, voice_command, fps=0):
+    def draw_overlay(self, frame, gesture, voice_command, fps=0, profile="default", dictation=False):
         """
         Draw overlay information on the frame.
 
@@ -35,6 +35,8 @@ class DisplayManager:
             gesture: str, current detected gesture
             voice_command: str, last voice command
             fps: float, current FPS
+            profile: str, active profile name
+            dictation: bool, whether dictation mode is enabled
 
         Returns:
             frame with overlay drawn
@@ -42,7 +44,7 @@ class DisplayManager:
         height, width, _ = frame.shape
 
         # ────────────── Top bar background ──────────────────────────────────
-        cv2.rectangle(frame, (0, 0), (width, 80), (40, 40, 40), -1)
+        cv2.rectangle(frame, (0, 0), (width, 105), (40, 40, 40), -1)
 
         # ────────────── Gesture status ──────────────────────────────────────
         gesture_text = f"Gesture: {gesture}"
@@ -68,6 +70,28 @@ class DisplayManager:
                 config.OVERLAY_COLOR_VOICE,
                 config.OVERLAY_THICKNESS
             )
+
+        # ────────────── Active profile and dictation state ────────────────
+        profile_text = f"Profile: {profile}"
+        dictation_text = "Dictation: ON" if dictation else "Dictation: OFF"
+        cv2.putText(
+            frame,
+            profile_text,
+            (10, 88),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.55,
+            (180, 255, 180),
+            1
+        )
+        cv2.putText(
+            frame,
+            dictation_text,
+            (220, 88),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.55,
+            (180, 220, 255),
+            1
+        )
 
         # ────────────── FPS counter ─────────────────────────────────────────
         if fps > 0:
